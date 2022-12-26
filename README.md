@@ -1,22 +1,11 @@
-# TOC Project 2020
-
-[![Maintainability](https://api.codeclimate.com/v1/badges/dc7fa47fcd809b99d087/maintainability)](https://codeclimate.com/github/NCKU-CCS/TOC-Project-2020/maintainability)
-
-[![Known Vulnerabilities](https://snyk.io/test/github/NCKU-CCS/TOC-Project-2020/badge.svg)](https://snyk.io/test/github/NCKU-CCS/TOC-Project-2020)
-
-
-Template Code for TOC Project 2020
-
-A Line bot based on a finite state machine
-
-More details in the [Slides](https://hackmd.io/@TTW/ToC-2019-Project#) and [FAQ](https://hackmd.io/s/B1Xw7E8kN)
+# TOC Project 2022
+enviroment : Ubuntu 22.04
 
 ## Setup
 
 ### Prerequisite
-* Python 3.6
+* Python 3.10
 * Pipenv
-* Facebook Page and App
 * HTTPS Server
 
 #### Install Dependency
@@ -38,6 +27,7 @@ pipenv shell
 #### Secret Data
 You should generate a `.env` file to set Environment Variables refer to our `.env.sample`.
 `LINE_CHANNEL_SECRET` and `LINE_CHANNEL_ACCESS_TOKEN` **MUST** be set to proper values.
+`SPOTIPY_CLIENT_ID` and `SPOTIPY_CLIENT_SECRET` **MUST** be set to proper values.
 Otherwise, you might not be able to run your code.
 
 #### Run Locally
@@ -65,25 +55,24 @@ After that, `ngrok` would generate a https URL.
 python3 app.py
 ```
 
-#### b. Servo
-
-Or You can use [servo](http://serveo.net/) to expose local servers to the internet.
-
-
 ## Finite State Machine
-![fsm](./img/show-fsm.png)
+![fsm](./img/fsm.png)
 
 ## Usage
 The initial state is set to `user`.
 
-Every time `user` state is triggered to `advance` to another state, it will `go_back` to `user` state after the bot replies corresponding message.
-
 * user
-	* Input: "go to state1"
-		* Reply: "I'm entering state1"
+	* Input: "search" or "track"
+		* dest : state1
+		* Reply: search state welcome message
 
-	* Input: "go to state2"
-		* Reply: "I'm entering state2"
+	* Input: "artist"
+		* dest : state2
+		* Reply: artist state welcome message
+	* Input: "Billboard"
+		* dest : state3
+		* Reply: state3 GUI
+
 
 ## Deploy
 Setting to deploy webhooks on Heroku.

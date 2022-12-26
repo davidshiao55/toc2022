@@ -1,34 +1,47 @@
 import os
 import sys
+import re
+from SpotifyAPI import SpotifyAPI
 
 from flask import Flask, jsonify, request, abort, send_file
 from dotenv import load_dotenv
 from linebot import LineBotApi, WebhookParser
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import *
 
 from fsm import TocMachine
-from utils import send_text_message
 
 load_dotenv()
 
+spotify = SpotifyAPI()
 
 machine = TocMachine(
-    states=["user", "state1", "state2"],
+    states=["user", "state1", "state2", "state3"],
     transitions=[
         {
             "trigger": "advance",
-            "source": "user",
+            "source": ["user", "state2", "state3"],
             "dest": "state1",
             "conditions": "is_going_to_state1",
         },
         {
             "trigger": "advance",
-            "source": "user",
+            "source": ["user", "state1", "state3"],
             "dest": "state2",
             "conditions": "is_going_to_state2",
         },
-        {"trigger": "go_back", "source": ["state1", "state2"], "dest": "user"},
+        {
+            "trigger": "advance",
+            "source": ["state1", "state2", "state3"],
+            "dest": "user",
+            "conditions": "is_going_to_user",
+        },
+        {
+            "trigger": "advance",
+            "source": ["user", "state1", "state2"],
+            "dest": "state3",
+            "conditions": "is_going_to_state3"
+        }
     ],
     initial="user",
     auto_transitions=False,
@@ -73,7 +86,7 @@ def callback():
             continue
 
         line_bot_api.reply_message(
-            event.reply_token, TextSendMessage(text=event.message.text)
+            event.reply_token, message_handler(text=event.message.text)
         )
 
     return "OK"
@@ -104,15 +117,205 @@ def webhook_handler():
         print(f"REQUEST BODY: \n{body}")
         response = machine.advance(event)
         if response == False:
-            send_text_message(event.reply_token, "Not Entering any State")
+            line_bot_api.reply_message(
+                event.reply_token, message_handler(text=event.message.text)
+            )
+        else:
+            if machine.state_text == "USER":
+                line_bot_api.reply_message(
+                    event.reply_token, get_user_button())
+            elif machine.state_text == "BILLBOARD":
+                line_bot_api.reply_message(
+                    event.reply_token, get_chart_button())
+            else:
+                line_bot_api.reply_message(
+                    event.reply_token, TextSendMessage(
+                        text=machine.welcome_message())
+                )
 
     return "OK"
 
 
-@app.route("/show-fsm", methods=["GET"])
+def message_handler(text):
+    if re.match(text.lower(), "help"):
+        return TextSendMessage(
+            text=machine.help_text())
+
+    if (machine.state_text == "SEARCH"):
+        if re.match(text.lower(), "preview"):
+            preview_url = spotify.preview_track()
+            return TextSendMessage(text=preview_url)
+        elif re.match(text.lower(), "next"):
+            spotify.search_next_track()
+            return get_song_button()
+        else:
+            spotify.search_tracks(text)
+            return get_song_button()
+
+    elif (machine.state_text == "ARTIST"):
+        if re.match(text.lower(), "next"):
+            spotify.get_artist_top_track_next()
+            return get_song_button()
+        elif re.match(text.lower(), "next artist"):
+            spotify.search_next_artist()
+            return get_artist_button()
+        elif re.match(text.lower(), "top"):
+            spotify.get_artist_top_track()
+            return get_song_button()
+        elif re.match(text.lower(), "preview"):
+            preview_url = spotify.preview_track()
+            return TextSendMessage(text=preview_url)
+        spotify.search_artist(text)
+        return get_artist_button()
+
+    elif (machine.state_text == "USER"):
+        if re.match(text.lower(), "random"):
+            spotify.get_random_track_url_from_myplaylist()
+            return get_song_button()
+        elif re.match(text.lower(), "preview"):
+            preview_url = spotify.preview_track()
+            return TextSendMessage(text=preview_url)
+        elif re.match(text.lower(), "next"):
+            spotify.get_random_track_url_from_myplaylist()
+            return get_song_button()
+        else:
+            return get_user_button()
+
+    elif (machine.state_text == "BILLBOARD"):
+        flag = True
+        try:
+            # try converting to integer
+            int(text)
+        except ValueError:
+            flag = False
+        if flag:
+            spotify.billboard_load_track(int(text))
+            return get_song_button()
+        elif re.match(text.lower(), "chart"):
+            return TextSendMessage(text=spotify.billboard_chart())
+        elif re.match(text.lower(), "next"):
+            spotify.billboard_load_next()
+            return get_song_button()
+        elif re.match(text.lower(), "random"):
+            spotify.billboard_load_random()
+            return get_song_button()
+        else:
+            return get_chart_button()
+
+
+def get_user_button():
+    button_template_message = TemplateSendMessage(
+        alt_text='Buttons template',
+        template=ButtonsTemplate(
+            thumbnail_image_url='https://stickershop.line-scdn.net/stickershop/v1/sticker/347121297/android/sticker.png',
+            title='SPOTIFY BOT',
+            text='Please select',
+            actions=[
+                MessageAction(
+                    label='search track',
+                    text='track'
+                ),
+                MessageAction(
+                    label='search artist',
+                    text='artist'
+                ),
+                MessageAction(
+                    label='billboard chart',
+                    text='billboard'
+                ),
+                MessageAction(
+                    label='song for you',
+                    text='random'
+                )
+            ]
+        )
+    )
+    return button_template_message
+
+
+def get_chart_button():
+    button_template_message = TemplateSendMessage(
+        alt_text='Buttons template',
+        template=ButtonsTemplate(
+            thumbnail_image_url='https://stickershop.line-scdn.net/stickershop/v1/sticker/347121299/android/sticker.png',
+            title='BillBoard chart',
+            text='Enter number to load the ranking track',
+            actions=[
+                MessageAction(
+                    label='Top 20 chart',
+                    text='chart'
+                ),
+
+                MessageAction(
+                    label='random song',
+                    text='random'
+                ),
+                MessageAction(
+                    label='exit',
+                    text='exit'
+                )
+            ]
+        )
+    )
+    return button_template_message
+
+
+def get_song_button():
+    button_template_message = TemplateSendMessage(
+        alt_text='Buttons template',
+        template=ButtonsTemplate(
+            thumbnail_image_url=spotify.get_album_cover_art(),
+            title=spotify.get_curr_track_name(),
+            text=spotify.get_curr_track_artist(),
+            actions=[
+                MessageAction(
+                    label='preview',
+                    text='preview'
+                ),
+                MessageAction(
+                    label='next',
+                    text='next'
+                ),
+                URIAction(
+                    label='spotify link',
+                    uri=spotify.get_curr_track_url()
+                )
+            ]
+        )
+    )
+    return button_template_message
+
+
+def get_artist_button():
+    button_template_message = TemplateSendMessage(
+        alt_text='Buttons template',
+        template=ButtonsTemplate(
+            thumbnail_image_url=spotify.get_curr_artist_image(),
+            title=spotify.get_curr_artist_name(),
+            text=spotify.get_curr_artist_genre(),
+            actions=[
+                MessageAction(
+                    label='top track',
+                    text='top'
+                ),
+                MessageAction(
+                    label='next artist',
+                    text='next artist'
+                ),
+                URIAction(
+                    label='spotify link',
+                    uri=spotify.get_curr_artist_url()
+                )
+            ]
+        )
+    )
+    return button_template_message
+
+
+@ app.route("/show-fsm", methods=["GET"])
 def show_fsm():
-    machine.get_graph().draw("fsm.png", prog="dot", format="png")
-    return send_file("fsm.png", mimetype="image/png")
+    machine.get_graph().draw("img/fsm.png", prog="dot", format="png")
+    return send_file("img/fsm.png", mimetype="image/png")
 
 
 if __name__ == "__main__":
